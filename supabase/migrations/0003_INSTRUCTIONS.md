@@ -53,9 +53,18 @@ create trigger incidents_priority_trigger
   execute function public.set_incident_priority();
 
 -- Backfill existing incidents already inside a claimed polygon.
+-- NOTE: UPDATE ... FROM cannot reference the target table, so use a
+-- correlated subquery (allowed in SET / WHERE) instead.
 update public.incidents i
 set is_priority = true,
-    property_id = p.property_id
-from public.property_for_point(st_x(i.location), st_y(i.location)) p
+    property_id = (
+      select p.property_id
+      from public.property_for_point(st_x(i.location), st_y(i.location)) p
+      limit 1
+    )
 where i.location is not null
-  and p.property_id is not null;
+  and exists (
+    select 1
+    from public.property_for_point(st_x(i.location), st_y(i.location)) pp
+    where pp.property_id is not null
+  );
