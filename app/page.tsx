@@ -1,13 +1,13 @@
 'use client';
 
 import '../styles/globals.css';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import IncidentForm from '../components/IncidentForm';
-import { getIncidents } from '../lib/utils';
+import { getIncidents, uploadIncidentPhoto, addIncidentPhoto, setIncidentPoi, addIncidentComment, getIncidentComments, reportIncidentRemoval } from '../lib/utils';
 import { getMyProperties, createProperty, type Property } from '../lib/properties';
 import { createClient } from '../lib/supabase/client';
-import type { Incident } from '../lib/types';
+import type { Incident, IncidentComment } from '../lib/types';
 import dynamic from 'next/dynamic';
 
 // Dynamic import - This prevents Leaflet from running on the server
@@ -34,6 +34,18 @@ const Home = () => {
   const [propertySuccess, setPropertySuccess] = useState<string | null>(null);
   // The finished-but-not-yet-saved draft polygon (set when the user double-clicks).
   const [draftPolygon, setDraftPolygon] = useState<GeoJSON.Polygon | null>(null);
+  // ---- Right-click pin context menu + action modals ----
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [uploadFor, setUploadFor] = useState<string | null>(null);
+  const [messageFor, setMessageFor] = useState<string | null>(null);
+  const [reportFor, setReportFor] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [commentsByIncident, setCommentsByIncident] = useState<
+    Record<string, IncidentComment[]>
+  >({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearDraft = () => {
     setDraftPolygon(null);
@@ -82,6 +94,107 @@ const Home = () => {
   };
 
   const router = useRouter();
+
+  // Close the right-click menu when clicking elsewhere.
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener('click', close);
+    window.addEventListener('contextmenu', close);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('contextmenu', close);
+    };
+  }, [menu]);
+
+  const openMenu = useCallback((id: string, x: number, y: number) => {
+    setMenu({ id, x, y });
+  }, []);
+
+  const togglePoi = async (id: string, current: boolean) => {
+    setMenu(null);
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await setIncidentPoi(id, !current);
+      await refresh();
+    } catch (err) {
+      const e = err as { message?: string };
+      setActionError(e?.message || 'Failed to update pin.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleUploadClick = (id: string) => {
+    setMenu(null);
+    setUploadFor(id);
+    // Defer so the hidden input is mounted before we click it.
+    setTimeout(() => fileInputRef.current?.click(), 0);
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const id = uploadFor;
+    e.target.value = '';
+    if (!file || !id) return;
+    setUploadFor(null);
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      const url = await uploadIncidentPhoto(id, file);
+      await addIncidentPhoto(id, url);
+      await refresh();
+    } catch (err) {
+      const er = err as { message?: string };
+      setActionError(er?.message || 'Failed to upload photo.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const openMessage = async (id: string) => {
+    setMenu(null);
+    setMessageFor(id);
+    try {
+      const cs = await getIncidentComments(id);
+      setCommentsByIncident((prev) => ({ ...prev, [id]: cs }));
+    } catch {
+      /* ignore read errors */
+    }
+  };
+
+  const submitMessage = async (body: string) => {
+    if (!messageFor || !body.trim()) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await addIncidentComment(messageFor, body.trim());
+      const cs = await getIncidentComments(messageFor);
+      setCommentsByIncident((prev) => ({ ...prev, [messageFor]: cs }));
+    } catch (err) {
+      const e = err as { message?: string };
+      setActionError(e?.message || 'Failed to post message.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const submitReport = async () => {
+    if (!reportFor || !reportReason.trim()) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await reportIncidentRemoval(reportFor, reportReason.trim());
+      setReportFor(null);
+      setReportReason('');
+    } catch (err) {
+      const e = err as { message?: string };
+      setActionError(e?.message || 'Failed to submit report.');
+    } finally {
+      setActionBusy(false);
+    }
+  };
 
   const handleSignOut = async () => {
     await createClient().auth.signOut();
@@ -144,6 +257,7 @@ const Home = () => {
             }))}
             onPolygonDrawn={handlePolygonDrawn}
             onPolygonDraft={setDraftPolygon}
+            onIncidentContextMenu={openMenu}
           />
         </div>
       </div>
@@ -249,6 +363,11 @@ const Home = () => {
                       PRIORITY
                     </span>
                   )}
+                  {incident.is_poi && (
+                    <span className="bg-amber-500 text-white text-xs font-bold px-2 py-0.5 rounded">
+                      POI
+                    </span>
+                  )}
                 </div>
                 {incident.description && <p className="mt-1">{incident.description}</p>}
                 {incident.location && (
@@ -256,11 +375,152 @@ const Home = () => {
                     📍 {incident.location.lat.toFixed(4)}, {incident.location.lng.toFixed(4)}
                   </p>
                 )}
+                {incident.photos && incident.photos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {incident.photos.map((src, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={i}
+                        src={src}
+                        alt={`incident ${incident.id} photo ${i + 1}`}
+                        className="h-20 w-20 object-cover rounded border"
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Hidden file input for photo upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFileSelected}
+      />
+
+      {/* Right-click pin context menu */}
+      {menu && (
+        <div
+          className="fixed z-50 bg-white border border-gray-300 rounded shadow-lg text-sm text-gray-900 min-w-[180px]"
+          style={{ top: menu.y, left: menu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="block w-full text-left px-3 py-2 hover:bg-gray-100"
+            onClick={() => handleUploadClick(menu.id)}
+          >
+            📷 Upload image
+          </button>
+          <button
+            type="button"
+            className="block w-full text-left px-3 py-2 hover:bg-gray-100"
+            onClick={() => openMessage(menu.id)}
+          >
+            💬 Leave a message
+          </button>
+          <button
+            type="button"
+            className="block w-full text-left px-3 py-2 hover:bg-gray-100"
+            onClick={() => {
+              const inc = incidents.find((i) => String(i.id) === menu.id);
+              togglePoi(menu.id, Boolean(inc?.is_poi));
+            }}
+          >
+            ⭐ Mark as point of interest
+          </button>
+          <button
+            type="button"
+            className="block w-full text-left px-3 py-2 hover:bg-gray-100 text-red-600"
+            onClick={() => {
+              setMenu(null);
+              setReportFor(menu.id);
+            }}
+          >
+            🚩 Report for removal
+          </button>
+        </div>
+      )}
+
+      {/* Leave a message modal */}
+      {messageFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMessageFor(null)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md text-gray-900" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-3">Message on pin</h3>
+            {(commentsByIncident[messageFor] ?? []).length > 0 && (
+              <ul className="mb-3 space-y-2 max-h-40 overflow-y-auto">
+                {(commentsByIncident[messageFor] ?? []).map((c) => (
+                  <li key={c.id} className="text-sm border-b pb-1">
+                    {c.body}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <textarea
+              className="w-full border border-gray-300 rounded p-2"
+              rows={3}
+              placeholder="Write a message…"
+              id="msg-body"
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="px-3 py-1.5 rounded bg-gray-200" onClick={() => setMessageFor(null)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50"
+                disabled={actionBusy}
+                onClick={() => {
+                  const el = document.getElementById('msg-body') as HTMLTextAreaElement | null;
+                  const body = el?.value ?? '';
+                  submitMessage(body);
+                  if (el) el.value = '';
+                }}
+              >
+                {actionBusy ? 'Sending…' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report for removal modal */}
+      {reportFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setReportFor(null)}>
+          <div className="bg-white rounded-lg p-6 w-full max-w-md text-gray-900" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold mb-3">Report pin for removal</h3>
+            <textarea
+              className="w-full border border-gray-300 rounded p-2"
+              rows={3}
+              placeholder="Reason for removal…"
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+            />
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" className="px-3 py-1.5 rounded bg-gray-200" onClick={() => setReportFor(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded bg-red-600 text-white disabled:opacity-50"
+                disabled={actionBusy || !reportReason.trim()}
+                onClick={submitReport}
+              >
+                {actionBusy ? 'Submitting…' : 'Submit report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionError && (
+        <p className="text-sm text-red-600 mt-3">{actionError}</p>
+      )}
     </div>
   );
 };
