@@ -4,3 +4,6 @@ dist
 *.log
 *.tsbuildinfo
 .env*.local
+
+# ignore hermes desktop attachments
+.hermes/

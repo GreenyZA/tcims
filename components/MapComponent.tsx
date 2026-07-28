@@ -3,6 +3,8 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet-draw';
+import 'leaflet-draw/dist/leaflet.draw.css';
 import { CATEGORIES, getCategory } from '../lib/categories';
 
 // Fix default marker icons (Leaflet's CDN paths break under bundlers)
@@ -80,6 +82,12 @@ interface MapComponentProps {
   draftLocation?: { lat: number; lng: number } | null;
   // Called when the user clicks the map (or drags the draft marker).
   onMapClick?: (lat: number, lng: number) => void;
+  // Land-owner claim mode: enables the polygon draw control.
+  claimMode?: boolean;
+  // Existing claimed properties (GeoJSON polygons) to render on the map.
+  properties?: Array<{ id: string; name: string; geometry: GeoJSON.Polygon }>;
+  // Called when the user finishes drawing a polygon while in claim mode.
+  onPolygonDrawn?: (polygon: GeoJSON.Polygon) => void;
 }
 
 export default function MapComponent({
@@ -87,14 +95,22 @@ export default function MapComponent({
   center = [-25.8242, 27.6774],
   draftLocation = null,
   onMapClick,
+  claimMode = false,
+  properties = [],
+  onPolygonDrawn,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const draftLayerRef = useRef<L.LayerGroup | null>(null);
-  // Keep the latest click handler without forcing the map to re-init.
+  const propertyLayerRef = useRef<L.LayerGroup | null>(null);
+  const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
+  const drawControlRef = useRef<L.Control.Draw | null>(null);
+  // Keep latest callbacks without forcing the map to re-init.
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  const onPolygonDrawnRef = useRef(onPolygonDrawn);
+  onPolygonDrawnRef.current = onPolygonDrawn;
 
   // Init the map once
   useEffect(() => {
@@ -134,6 +150,37 @@ export default function MapComponent({
 
     markersRef.current = L.layerGroup().addTo(map);
     draftLayerRef.current = L.layerGroup().addTo(map);
+    propertyLayerRef.current = L.layerGroup().addTo(map);
+
+    // Layer that holds user-drawn shapes (claim mode).
+    const drawnItems = new L.FeatureGroup();
+    drawnItemsRef.current = drawnItems;
+    drawnItems.addTo(map);
+
+    // Draw control — polygon only, for claiming property.
+    const drawControl = new L.Control.Draw({
+      draw: {
+        polygon: { allowIntersection: false, showArea: true },
+        polyline: false,
+        rectangle: false,
+        circle: false,
+        marker: false,
+        circlemarker: false,
+      },
+      edit: { featureGroup: drawnItems, edit: false, remove: true },
+    });
+    drawControlRef.current = drawControl;
+    // Hidden until claim mode is enabled.
+    drawControl.remove();
+    map.addControl(drawControl);
+
+    map.on(L.Draw.Event.CREATED, (e: unknown) => {
+      const layer = (e as { layer: L.Layer }).layer as L.Polygon;
+      drawnItems.addLayer(layer);
+      const geojson = layer.toGeoJSON() as GeoJSON.Feature;
+      const polygon = geojson.geometry as GeoJSON.Polygon;
+      onPolygonDrawnRef.current?.(polygon);
+    });
 
     // Let the user click anywhere on the map to choose where the new pin goes.
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -146,6 +193,8 @@ export default function MapComponent({
         mapInstanceRef.current = null;
         markersRef.current = null;
         draftLayerRef.current = null;
+        propertyLayerRef.current = null;
+        drawnItemsRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,6 +250,36 @@ export default function MapComponent({
       onMapClickRef.current?.(p.lat, p.lng);
     });
   }, [draftLocation]);
+
+  // Show/hide the polygon draw control based on claim mode.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const control = drawControlRef.current;
+    if (!map || !control) return;
+    if (claimMode) {
+      control.addTo(map);
+    } else {
+      control.remove();
+    }
+  }, [claimMode]);
+
+  // Render existing claimed properties as filled polygons.
+  useEffect(() => {
+    const layer = propertyLayerRef.current;
+    if (!layer) return;
+    layer.clearLayers();
+    properties.forEach((p) => {
+      const polygon = L.geoJSON(p.geometry, {
+        style: {
+          color: '#16a34a',
+          weight: 2,
+          fillColor: '#16a34a',
+          fillOpacity: 0.2,
+        },
+      }).addTo(layer);
+      polygon.bindPopup(`<strong>${p.name}</strong><br/>Claimed property`);
+    });
+  }, [properties]);
 
   return (
     <div>

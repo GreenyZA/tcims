@@ -95,10 +95,18 @@ Security note (owner-acknowledged, "beef up later"): even the simple version mus
 store plaintext passwords. Use Postgres `pgcrypto` `crypt()` hashing (or Supabase Auth)
 from day one; MFA / email verification / rate-limiting are the later hardening.
 
-Still open / next:
-- [ ] >> PRIORITY << Registration + login portal (username + password, hashed — see security note)
-- [ ] Polygon draw + claim flow on map, saved to `properties` table
-- [ ] Spatial containment (ST_Contains) → priority notifications for property owners
+### Progress
+- [x] Auth foundation: Supabase SSR clients + session middleware + register/login portal
+      (username + email + password; passwords hashed by Supabase Auth, never plaintext).
+- [x] Migration 0002: profiles (username) + properties (PostGIS polygon) + RLS + property_for_point() helper.
+      (SQL written in supabase/migrations/0002_...sql; APPLY + reload schema cache still pending on live DB.)
+- [x] Polygon draw + claim flow on map: leaflet-draw integration, "Claim a plot" UI, save to properties
+      (lib/properties.ts createProperty/getMyProperties), render claimed plots as filled polygons.
+- [ ] Spatial containment (ST_Contains) → priority notifications for property owners (DB helper exists;
+      wire incident-save / notification path next).
 - [ ] Day 15: Image upload to Supabase Storage with preview
-- [ ] Remaining Days 1–10 scaffolding gaps (typed Supabase client, auth wiring, schema/types reconciliation)
-- [ ] Days 16–28 (optimistic save, realtime, filters, detail modal, analytics, deploy, docs)
+
+Outstanding (blocked on live-DB apply + cache reload by owner):
+- Run Query B (properties block) in Supabase SQL Editor, then reload PostgREST schema cache
+  (Dashboard → API → Reload schema, or `select pg_notify('pgrst','reload schema');`).
+- Verify `GET /rest/v1/properties` and `/rest/v1/profiles` return `[]` (not PGRST205).
