@@ -92,6 +92,8 @@ const Home = () => {
   const refresh = useCallback(async () => {
     try {
       const data = await getIncidents();
+      // Priority incidents (inside a claimed property) bubble to the top.
+      data.sort((a, b) => Number(b.is_priority) - Number(a.is_priority));
       setIncidents(data);
     } catch (error) {
       console.error('Failed to fetch incidents:', error);
@@ -232,8 +234,22 @@ const Home = () => {
         ) : (
           <div className="space-y-4">
             {incidents.map((incident) => (
-              <div key={incident.id} className="p-4 border rounded-lg bg-white shadow text-gray-900">
-                <strong>{incident.title || incident.type || 'No Title'}</strong>
+              <div
+                key={incident.id}
+                className={
+                  incident.is_priority
+                    ? 'p-4 border-2 border-red-500 rounded-lg bg-white shadow text-gray-900'
+                    : 'p-4 border rounded-lg bg-white shadow text-gray-900'
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <strong>{incident.title || incident.type || 'No Title'}</strong>
+                  {incident.is_priority && (
+                    <span className="bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded">
+                      PRIORITY
+                    </span>
+                  )}
+                </div>
                 {incident.description && <p className="mt-1">{incident.description}</p>}
                 {incident.location && (
                   <p className="text-sm text-gray-600">

@@ -14,5 +14,10 @@ export type Incident = {
   user_id?: string;
   anonymous?: boolean;
   status?: IncidentStatus;
+  // True when the incident falls inside a claimed property polygon
+  // (computed server-side by the incidents_priority_trigger).
+  is_priority?: boolean;
+  // The containing property, if priority.
+  property_id?: string | null;
   created_at?: string;
 };
