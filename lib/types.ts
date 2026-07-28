@@ -19,5 +19,25 @@ export type Incident = {
   is_priority?: boolean;
   // The containing property, if priority.
   property_id?: string | null;
+  // Point-of-interest flag (right-click -> Mark as POI).
+  is_poi?: boolean;
+  // Attached photo URLs (public Storage paths).
+  created_at?: string;
+};
+
+export type IncidentComment = {
+  id: string;
+  incident_id: string;
+  user_id?: string | null;
+  body: string;
+  created_at?: string;
+};
+
+export type IncidentReport = {
+  id: string;
+  incident_id: string;
+  reporter_id?: string | null;
+  reason: string;
+  status?: 'open' | 'reviewed' | 'actioned' | 'dismissed';
   created_at?: string;
 };

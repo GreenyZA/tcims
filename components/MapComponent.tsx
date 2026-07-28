@@ -92,6 +92,12 @@ interface MapComponentProps {
   onPolygonDrawn?: (polygon: GeoJSON.Polygon) => void;
   // Called with the in-progress draft polygon (or null when cleared/edited).
   onPolygonDraft?: (polygon: GeoJSON.Polygon | null) => void;
+  // Right-click a pin -> open the context menu at screen pixel (x, y).
+  onIncidentContextMenu?: (
+    id: string,
+    x: number,
+    y: number,
+  ) => void;
 }
 
 export default function MapComponent({
@@ -103,6 +109,7 @@ export default function MapComponent({
   properties = [],
   onPolygonDrawn,
   onPolygonDraft,
+  onIncidentContextMenu,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -118,6 +125,8 @@ export default function MapComponent({
   onPolygonDrawnRef.current = onPolygonDrawn;
   const onPolygonDraftRef = useRef(onPolygonDraft);
   onPolygonDraftRef.current = onPolygonDraft;
+  const onIncidentContextMenuRef = useRef(onIncidentContextMenu);
+  onIncidentContextMenuRef.current = onIncidentContextMenu;
   const claimModeRef = useRef(claimMode);
   claimModeRef.current = claimMode;
   // Draft claim vertices as [lat, lng] pairs.
@@ -300,7 +309,18 @@ export default function MapComponent({
             iconAnchor: [9, 9],
           })
         : iconFor(cat.color);
-      L.marker(pos, { icon }).addTo(group).bindPopup(popup);
+      const marker = L.marker(pos, { icon }).addTo(group);
+      marker.bindPopup(popup);
+      // Right-click opens the pin action menu (prevents the browser menu).
+      marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
+        const evt = e.originalEvent as MouseEvent;
+        evt.preventDefault();
+        onIncidentContextMenuRef.current?.(
+          String(incident.id),
+          evt.clientX,
+          evt.clientY,
+        );
+      });
     });
 
     // Pan to the latest incident if there is one
