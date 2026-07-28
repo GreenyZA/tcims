@@ -10,7 +10,7 @@ const IncidentForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createIncident({ type, description, location });
+      await createIncident({ type, description, location, anonymous: true });
       alert('Incident created successfully!');
       setType('');
       setDescription('');
