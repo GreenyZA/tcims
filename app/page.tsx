@@ -1,10 +1,11 @@
 'use client';
 
 import '../styles/globals.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import IncidentForm from '../components/IncidentForm';
-import dynamic from 'next/dynamic';
+import { getIncidents } from '../lib/utils';
 import type { Incident } from '../lib/types';
+import dynamic from 'next/dynamic';
 
 // Dynamic import - This prevents Leaflet from running on the server
 const MapComponent = dynamic(() => import('../components/MapComponent'), {
@@ -12,23 +13,26 @@ const MapComponent = dynamic(() => import('../components/MapComponent'), {
   loading: () => <div className="h-[500px] bg-gray-100 flex items-center justify-center rounded-lg">Loading map...</div>,
 });
 
-type IncidentsTableRow = Incident;
+const HOME_CENTER: [number, number] = [-25.8242, 27.6774];
 
 const Home = () => {
-  const [incidents, setIncidents] = useState<IncidentsTableRow[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await getIncidents();
+      setIncidents(data);
+    } catch (error) {
+      console.error('Failed to fetch incidents:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const fetchIncidents = async () => {
-      try {
-        const incidentsData = await getIncidents();
-        setIncidents(incidentsData);
-      } catch (error) {
-        console.error('Failed to fetch incidents:', error);
-      }
-    };
-
-    fetchIncidents();
-  }, []);
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="min-h-screen p-8">
@@ -37,38 +41,40 @@ const Home = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
           <h2 className="text-2xl font-semibold mb-4">Report New Incident</h2>
-          <IncidentForm />
+          <IncidentForm onCreated={refresh} />
         </div>
 
         <div>
           <h2 className="text-2xl font-semibold mb-4">Live Map</h2>
-          <MapComponent />
+          <MapComponent incidents={incidents} center={HOME_CENTER} />
         </div>
       </div>
 
       {/* Incidents List */}
       <div className="mt-12">
         <h2 className="text-2xl font-semibold mb-4">Recent Incidents</h2>
-        <div className="space-y-4">
-          {incidents.map((incident) => (
-            <div key={incident.id} className="p-4 border rounded-lg bg-white shadow">
-              <strong>{incident.title || incident.type || 'No Title'}</strong>
-              {incident.description && <p className="mt-1">{incident.description}</p>}
-              {incident.location && (
-                <p className="text-sm text-gray-600">
-                  📍 {incident.location.lat.toFixed(4)}, {incident.location.lng.toFixed(4)}
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
+        {loading ? (
+          <p className="text-gray-600">Loading...</p>
+        ) : incidents.length === 0 ? (
+          <p className="text-gray-600">No incidents reported yet.</p>
+        ) : (
+          <div className="space-y-4">
+            {incidents.map((incident) => (
+              <div key={incident.id} className="p-4 border rounded-lg bg-white shadow">
+                <strong>{incident.title || incident.type || 'No Title'}</strong>
+                {incident.description && <p className="mt-1">{incident.description}</p>}
+                {incident.location && (
+                  <p className="text-sm text-gray-600">
+                    📍 {incident.location.lat.toFixed(4)}, {incident.location.lng.toFixed(4)}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 };
 
 export default Home;
-
-const getIncidents = async (): Promise<IncidentsTableRow[]> => {
-  return [];
-};

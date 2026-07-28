@@ -2,10 +2,10 @@
 import { useState } from 'react';
 import { createIncident } from '../lib/utils';
 
-const IncidentForm = () => {
+const IncidentForm = ({ onCreated }: { onCreated?: () => void }) => {
   const [type, setType] = useState('');
   const [description, setDescription] = useState('');
-  const [location, setLocation] = useState<{ lat: number; lng: number }>({ lat: 51.505, lng: -0.09 });
+  const [location, setLocation] = useState<{ lat: number; lng: number }>({ lat: -25.8242, lng: 27.6774 });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -14,7 +14,8 @@ const IncidentForm = () => {
       alert('Incident created successfully!');
       setType('');
       setDescription('');
-      setLocation({ lat: 51.505, lng: -0.09 });
+      setLocation({ lat: -25.8242, lng: 27.6774 });
+      onCreated?.();
     } catch (error) {
       console.error('Error creating incident:', error);
       alert('Failed to create incident.');
