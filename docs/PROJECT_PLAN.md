@@ -77,7 +77,28 @@ Completed in-session (not necessarily in Day order):
 - [x] Dark-mode contrast fixes across form, legend, incident cards
 - [x] Flood category added to shared category list
 
+## Feature Stream: Land-Owner Property Claims (user-requested, PRIORITY)
+Owner-driven requirement that precedes Day 15 in practice — central to the app's value.
+
+Goal: a land owner registers, plots a polygon on the map claiming it as their property,
+and any incident occurring inside that polygon gets priority in that owner's notifications.
+
+Implied work:
+- Registration / login portal (initially simple username + password).
+- User identity tied to sessions (no anonymous-only mode for claimed properties).
+- Polygon draw tool on the map (Leaflet draw integration).
+- `properties` table: id, owner_user_id, name, geometry (PostGIS polygon), created_at.
+- Spatial containment query (PostGIS `ST_Contains`) to match incidents to a property.
+- Notification priority flag for incidents inside a claimed polygon.
+
+Security note (owner-acknowledged, "beef up later"): even the simple version must NOT
+store plaintext passwords. Use Postgres `pgcrypto` `crypt()` hashing (or Supabase Auth)
+from day one; MFA / email verification / rate-limiting are the later hardening.
+
 Still open / next:
+- [ ] >> PRIORITY << Registration + login portal (username + password, hashed — see security note)
+- [ ] Polygon draw + claim flow on map, saved to `properties` table
+- [ ] Spatial containment (ST_Contains) → priority notifications for property owners
 - [ ] Day 15: Image upload to Supabase Storage with preview
 - [ ] Remaining Days 1–10 scaffolding gaps (typed Supabase client, auth wiring, schema/types reconciliation)
 - [ ] Days 16–28 (optimistic save, realtime, filters, detail modal, analytics, deploy, docs)
