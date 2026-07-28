@@ -110,9 +110,14 @@ from day one; MFA / email verification / rate-limiting are the later hardening.
       PRIORITY badge/border in the Recent Incidents list, sorted to top. VERIFIED working end-to-end.
 - [x] App gated to registered users: standalone /login route + middleware route protection (unauth → /login).
 - [x] Open self-registration (owner decision 2026-07-28): keep open for now, lock down later.
-- [ ] Day 15: Image upload to Supabase Storage with preview
+- [x] Pin right-click context menu (Day 15 image upload delivered here): migration 0004 adds
+      incident_comments + incident_reports tables + is_poi column + append_incident_photo() RPC + RLS.
+      Right-click a pin -> 4 actions: Upload image (to incident-photos bucket, shows on card),
+      Leave a message (incident_comments thread), Mark as POI (is_poi + amber POI badge),
+      Report for removal (incident_reports row, pin stays visible, admin reviews later).
+      DB objects verified present (1/1/1). VERIFIED working end-to-end.
 
 Outstanding:
-- Day 15 image upload to Supabase Storage (next feature when owner wants it).
 - Lock down registration (deferred — open for now).
-- (Previously blocked live-DB steps for 0002/0003 are DONE: migrations applied + schema cache reloaded.)
+- Admin moderation UI for incident_reports (reviews/action removal) — not built yet.
+- (Live-DB steps for 0002/0003/0004 are DONE: migrations applied + schema cache reloaded.)
