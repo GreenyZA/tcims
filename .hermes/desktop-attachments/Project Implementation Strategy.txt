@@ -1,0 +1,121 @@
+Project Implementation Strategy
+Overview
+The Community Incident Mapping System is an interactive web application designed to help manage and track various incidents within a community, such as electricity outages, crime, wildfires, floods, etc. The system will allow users to place pins on a map with detailed information, including photos and updates. A full analytics dashboard will be provided for backend management, enabling the estimation of projected paths for events like riots.
+
+Project Stack
+Frontend: Next.js 14 (App Router) + TypeScript
+Styling: Tailwind CSS + shadcn/ui
+Map: Leaflet + React-Leaflet
+Database: Supabase (PostgreSQL + PostGIS + Auth + Storage)
+Authentication: Supabase Auth
+Deployment: Vercel (frontend) + Supabase (backend)
+Detailed Project Description
+Project Initialization
+
+Create a new repository on GitHub.
+Initialize the project using npx create-next-app@latest . --typescript --tailwind --eslint --app.
+Install core dependencies: Leaflet, React-Leaflet, Supabase, shadcn/ui.
+Supabase Project Setup
+
+Create a new Supabase project.
+Set up authentication with email and anonymous options.
+Connect the Supabase client to Next.js.
+Configure environment variables for Supabase URL and key.
+Basic Layout & Navigation
+
+Design a responsive layout with a sidebar for categories and filters, and a top navigation bar.
+Implement dark mode functionality.
+Database Schema Design
+
+Design the database schema using PostgreSQL + PostGIS:
+incidents table: id, type, location (PostGIS), description, photos, user_id, status, created_at.
+Enable PostGIS for spatial data support.
+TypeScript Types & Data Fetching
+
+Define TypeScript types for the database schema.
+Create utility functions to interact with Supabase.
+Fetch and display sample incidents on a simple list page.
+Interactive Map Core
+
+Integrate Leaflet map centered on the community area.
+Add zoom, layers, and tile provider functionality.
+Display existing incidents as colored pins based on category.
+Implement a legend for pin categories.
+Allow users to click on the map to open a form for adding new incidents (category dropdown, description, photo upload).
+Implement image upload to Supabase Storage with preview.
+Save incidents to the database and update the UI optimistically.
+Subscribe to real-time changes for live updates.
+Features & History
+
+Implement filters and search functionality based on category, date range, and status.
+Create an incident detail modal with a history timeline.
+Add user privacy settings (anonymous toggle, data visibility).
+Develop a basic moderation queue for admins to approve/reject/edit incidents.
+Implement a simple chat feature using Supabase real-time capabilities for per-incident comments.
+Polish, Analytics & Deployment
+
+Create a dashboard with basic analytics:
+Incident count by type/week.
+Heatmap of incident locations.
+Ensure responsive design and perform mobile testing.
+Implement error handling, loading states, and toast notifications.
+Deploy the frontend to Vercel and configure Supabase for production use.
+Write comprehensive documentation, including a README and basic contribution guide.
+Conduct final testing to ensure everything works as expected.
+Post-Week 4: Advanced Topics
+Implement notifications for new incidents or updates.
+Develop an advanced admin panel with more detailed management features.
+Add data export functionality.
+Optimize performance for better user experience.
+Implementation Strategy
+Project Initialization
+
+Day 1: Set up the project repository and initialize Next.js with TypeScript, Tailwind CSS, ESLint, and App Router.
+Day 2: Install Leaflet, React-Leaflet, Supabase, and shadcn/ui dependencies.
+Supabase Project Setup
+
+Day 3: Create a Supabase project and set up authentication with email and anonymous options.
+Day 4: Connect the Supabase client to Next.js and configure environment variables.
+Basic Layout & Navigation
+
+Day 5: Design and implement the responsive layout with sidebar, top navigation, and dark mode functionality.
+Database Schema Design
+
+Day 6: Design the incidents table schema in Supabase.
+Day 7: Enable PostGIS for spatial data support and perform a basic insert test.
+TypeScript Types & Data Fetching
+
+Day 8: Define TypeScript types for the database schema.
+Day 9: Create utility functions to interact with Supabase.
+Day 10: Fetch and display sample incidents on a simple list page.
+Interactive Map Core
+
+Day 11: Integrate Leaflet map centered on the community area.
+Day 12: Add zoom, layers, and tile provider functionality.
+Day 13: Display existing incidents as colored pins based on category and add a legend.
+Day 14: Allow users to click on the map to open a form for adding new incidents.
+Day 15: Implement image upload to Supabase Storage with preview.
+Day 16: Save incidents to the database and update the UI optimistically.
+Day 17: Subscribe to real-time changes for live updates.
+Features & History
+
+Day 18: Implement filters and search functionality based on category, date range, and status.
+Day 19: Create an incident detail modal with a history timeline.
+Day 20: Add user privacy settings (anonymous toggle, data visibility).
+Day 21: Develop a basic moderation queue for admins to approve/reject/edit incidents.
+Day 22: Implement a simple chat feature using Supabase real-time capabilities for per-incident comments.
+Polish, Analytics & Deployment
+
+Day 23: Create a dashboard with basic analytics (incident count by type/week, heatmap).
+Day 24: Ensure responsive design and perform mobile testing.
+Day 25: Implement error handling, loading states, and toast notifications.
+Day 26: Deploy the frontend to Vercel and configure Supabase for production use.
+Day 27: Write comprehensive documentation, including a README and basic contribution guide.
+Day 28: Conduct final testing to ensure everything works as expected.
+Post-Week 4: Advanced Topics
+Implement notifications for new incidents or updates.
+Develop an advanced admin panel with more detailed management features.
+Add data export functionality.
+Optimize performance for better user experience.
+Conclusion
+This project plan provides a structured approach to building the Community Incident Mapping System. By following this plan, you will be able to create a functional and user-friendly application that meets the needs of your community. If you have any questions or need further assistance at any stage, feel free to ask!
