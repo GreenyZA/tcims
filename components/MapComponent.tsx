@@ -22,6 +22,10 @@ type Incident = {
   type?: string;
   title?: string;
   description?: string;
+  // True when the incident falls inside a claimed property polygon.
+  is_priority?: boolean;
+  // The containing property id, if priority.
+  property_id?: string | null;
 };
 
 // Build a colored pin icon for a given category color.
@@ -274,14 +278,29 @@ export default function MapComponent({
         incident.location.lat,
         incident.location.lng,
       ];
+      const priority = incident.is_priority;
       const popup = `
         <div style="min-width:160px">
+          ${
+            priority
+              ? '<div style="display:inline-block;background:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;margin-bottom:4px">PRIORITY</div>'
+              : ''
+          }
           <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cat.color};margin-right:6px"></span>
           <strong>${cat.label}</strong>
           ${incident.title ? `<div style="margin-top:2px">${incident.title}</div>` : ''}
           ${incident.description ? `<p style="margin:4px 0 0">${incident.description}</p>` : ''}
         </div>`;
-      L.marker(pos, { icon: iconFor(cat.color) }).addTo(group).bindPopup(popup);
+      // Priority incidents get a red ring so they stand out on the map.
+      const icon = priority
+        ? L.divIcon({
+            className: '',
+            html: `<div style="width:18px;height:18px;border-radius:50%;background:${cat.color};border:3px solid #dc2626;box-shadow:0 0 0 3px rgba(220,38,38,0.35)"></div>`,
+            iconSize: [18, 18],
+            iconAnchor: [9, 9],
+          })
+        : iconFor(cat.color);
+      L.marker(pos, { icon }).addTo(group).bindPopup(popup);
     });
 
     // Pan to the latest incident if there is one
@@ -331,12 +350,18 @@ export default function MapComponent({
   }, [claimMode]);
 
   // Render existing claimed properties as filled polygons.
+  // interactive:false so clicks pass THROUGH to the map (you can still drop an
+  // incident pin anywhere, including inside a claimed plot). The name stays
+  // listed under "My Land".
   useEffect(() => {
     const layer = propertyLayerRef.current;
     if (!layer) return;
     layer.clearLayers();
     properties.forEach((p) => {
-      const polygon = L.geoJSON(p.geometry, {
+      // Non-interactive display overlay: clicks pass through to the map so an
+      // incident pin can be dropped anywhere (incl. inside the plot).
+      L.geoJSON(p.geometry, {
+        interactive: false,
         style: {
           color: '#16a34a',
           weight: 2,
@@ -344,7 +369,6 @@ export default function MapComponent({
           fillOpacity: 0.2,
         },
       }).addTo(layer);
-      polygon.bindPopup(`<strong>${p.name}</strong><br/>Claimed property`);
     });
   }, [properties]);
 
