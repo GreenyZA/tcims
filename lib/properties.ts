@@ -21,9 +21,24 @@ export async function createProperty(input: {
   geometry: GeoJSON.Polygon;
 }): Promise<Property> {
   const supabase = createClient();
+  // Use getSession() (cached, no network) rather than getUser() (network-
+  // validated). The browser client's getUser() can return null even when a
+  // valid session cookie exists, because it makes a round-trip to the Auth
+  // server. RLS on the DB still enforces ownership via the JWT, so reading
+  // the cached session here is safe for setting owner_user_id.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const user = session?.user;
+  if (!user) {
+    throw new Error('Not signed in — please sign out and sign in again.');
+  }
+
   const { data, error } = await supabase
     .from('properties')
-    .insert([{ name: input.name, geometry: input.geometry }])
+    .insert([
+      { name: input.name, geometry: input.geometry, owner_user_id: user.id },
+    ])
     .select()
     .single();
 

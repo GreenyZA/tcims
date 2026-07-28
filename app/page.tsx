@@ -30,6 +30,17 @@ const Home = () => {
   const [propertyName, setPropertyName] = useState('');
   const [propertyError, setPropertyError] = useState<string | null>(null);
   const [propertyBusy, setPropertyBusy] = useState(false);
+  // Success confirmation shown after a plot is saved.
+  const [propertySuccess, setPropertySuccess] = useState<string | null>(null);
+  // The finished-but-not-yet-saved draft polygon (set when the user double-clicks).
+  const [draftPolygon, setDraftPolygon] = useState<GeoJSON.Polygon | null>(null);
+
+  const clearDraft = () => {
+    setDraftPolygon(null);
+    setClaimMode(false);
+    setPropertyError(null);
+    setPropertySuccess(null);
+  };
 
   const loadProperties = useCallback(async () => {
     try {
@@ -46,19 +57,25 @@ const Home = () => {
 
   const handlePolygonDrawn = async (polygon: GeoJSON.Polygon) => {
     setPropertyError(null);
+    setPropertySuccess(null);
     const name = propertyName.trim();
     if (!name) {
-      setPropertyError('Enter a name for your plot before drawing, or after — try again.');
+      setPropertyError('Enter a name for your plot before accepting.');
       return;
     }
     setPropertyBusy(true);
     try {
       await createProperty({ name, geometry: polygon });
       setPropertyName('');
+      setDraftPolygon(null);
       setClaimMode(false);
+      setPropertySuccess(`"${name}" saved as your property.`);
       await loadProperties();
     } catch (err) {
-      setPropertyError(err instanceof Error ? err.message : 'Failed to save plot.');
+      // Supabase errors are plain objects (not Error instances) — show the
+      // real message rather than "[object Object]".
+      const e = err as { message?: string };
+      setPropertyError(e?.message || 'Failed to save plot.');
     } finally {
       setPropertyBusy(false);
     }
@@ -124,6 +141,7 @@ const Home = () => {
               geometry: p.geometry,
             }))}
             onPolygonDrawn={handlePolygonDrawn}
+            onPolygonDraft={setDraftPolygon}
           />
         </div>
       </div>
@@ -137,7 +155,15 @@ const Home = () => {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            onClick={() => setClaimMode((v) => !v)}
+            onClick={() => {
+              if (claimMode) {
+                clearDraft();
+              } else {
+                setPropertyError(null);
+                setDraftPolygon(null);
+                setClaimMode(true);
+              }
+            }}
             disabled={propertyBusy}
             className={
               claimMode
@@ -155,12 +181,39 @@ const Home = () => {
             className="border border-gray-300 p-2 rounded bg-white text-gray-900"
           />
         </div>
-        {claimMode && (
+        {claimMode && !draftPolygon && (
           <p className="text-sm text-blue-600 mt-2">
-            Draw a polygon on the map to mark your property boundary.
+            Click points on the map to outline your property, then double-click to finish.
           </p>
         )}
+        {draftPolygon && (
+          <div className="mt-3">
+            <p className="text-sm text-gray-700 mb-2">
+              Area outlined. Accept to save it as &ldquo;{propertyName || 'your plot'}&rdquo;, or clear to redraw.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => handlePolygonDrawn(draftPolygon)}
+                disabled={propertyBusy}
+                className="bg-green-700 text-white px-4 py-2 rounded disabled:opacity-50"
+              >
+                {propertyBusy ? 'Saving…' : 'Accept'}
+              </button>
+              <button
+                type="button"
+                onClick={clearDraft}
+                className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
         {propertyError && <p className="text-sm text-red-600 mt-2">{propertyError}</p>}
+        {propertySuccess && (
+          <p className="text-sm text-green-700 mt-2 font-medium">{propertySuccess}</p>
+        )}
         {myProperties.length > 0 && (
           <ul className="mt-4 space-y-1 text-sm text-gray-800">
             {myProperties.map((p) => (
