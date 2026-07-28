@@ -84,8 +84,10 @@ interface MapComponentProps {
   claimMode?: boolean;
   // Existing claimed properties (GeoJSON polygons) to render on the map.
   properties?: Array<{ id: string; name: string; geometry: GeoJSON.Polygon }>;
-  // Called when the user finishes drawing a polygon while in claim mode.
+  // Called when the user finishes drawing a polygon (draft complete, not yet saved).
   onPolygonDrawn?: (polygon: GeoJSON.Polygon) => void;
+  // Called with the in-progress draft polygon (or null when cleared/edited).
+  onPolygonDraft?: (polygon: GeoJSON.Polygon | null) => void;
 }
 
 export default function MapComponent({
@@ -96,6 +98,7 @@ export default function MapComponent({
   claimMode = false,
   properties = [],
   onPolygonDrawn,
+  onPolygonDraft,
 }: MapComponentProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -109,6 +112,8 @@ export default function MapComponent({
   onMapClickRef.current = onMapClick;
   const onPolygonDrawnRef = useRef(onPolygonDrawn);
   onPolygonDrawnRef.current = onPolygonDrawn;
+  const onPolygonDraftRef = useRef(onPolygonDraft);
+  onPolygonDraftRef.current = onPolygonDraft;
   const claimModeRef = useRef(claimMode);
   claimModeRef.current = claimMode;
   // Draft claim vertices as [lat, lng] pairs.
@@ -159,12 +164,24 @@ export default function MapComponent({
 
     // ---- Custom land-claim polygon drawing ----
     // Single click adds a vertex (debounced). Double-click finishes the polygon
-    // WITHOUT counting the double-click location as a vertex.
+    // WITHOUT counting the double-click location as a vertex. The finished
+    // draft is reported upward; the page shows an Accept button to lock it in.
     const redrawClaim = () => {
       const layer = claimDrawRef.current;
       if (!layer) return;
       layer.clearLayers();
       const pts = claimPtsRef.current;
+      // Translucent filled area so the user sees the plot while drawing.
+      if (pts.length >= 3) {
+        const ring = pts.map(([lat, lng]) => [lng, lat]);
+        ring.push(ring[0]);
+        L.polygon(pts, {
+          color: '#16a34a',
+          weight: 2,
+          fillColor: '#16a34a',
+          fillOpacity: 0.2,
+        }).addTo(layer);
+      }
       pts.forEach(([lat, lng]) => {
         L.circleMarker([lat, lng], {
           radius: 4,
@@ -174,7 +191,7 @@ export default function MapComponent({
           fillOpacity: 1,
         }).addTo(layer);
       });
-      if (pts.length >= 2) {
+      if (pts.length >= 2 && pts.length < 3) {
         L.polyline(pts, {
           color: '#16a34a',
           weight: 2,
@@ -185,6 +202,7 @@ export default function MapComponent({
 
     const addClaimPoint = (lat: number, lng: number) => {
       claimPtsRef.current.push([lat, lng]);
+      onPolygonDraftRef.current?.(null);
       redrawClaim();
     };
 
@@ -198,10 +216,11 @@ export default function MapComponent({
           type: 'Polygon',
           coordinates: [ring],
         };
-        onPolygonDrawnRef.current?.(polygon);
+        // Report the finished draft upward; the page decides to save it.
+        onPolygonDraftRef.current?.(polygon);
+        redrawClaim();
       }
-      claimPtsRef.current = [];
-      claimDrawRef.current?.clearLayers();
+      // Keep claimPtsRef so the draft stays on the map until Accept/Clear.
     };
 
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -307,6 +326,7 @@ export default function MapComponent({
       map.doubleClickZoom.enable();
       claimPtsRef.current = [];
       claimDrawRef.current?.clearLayers();
+      onPolygonDraftRef.current?.(null);
     }
   }, [claimMode]);
 
