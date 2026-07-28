@@ -3,8 +3,6 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import 'leaflet-draw';
-import 'leaflet-draw/dist/leaflet.draw.css';
 import { CATEGORIES, getCategory } from '../lib/categories';
 
 // Fix default marker icons (Leaflet's CDN paths break under bundlers)
@@ -80,9 +78,9 @@ interface MapComponentProps {
   center?: [number, number];
   // A location the user is choosing for a *new* incident (not yet submitted).
   draftLocation?: { lat: number; lng: number } | null;
-  // Called when the user clicks the map (or drags the draft marker).
+  // Called when the user clicks the map (or drags the draft marker) in normal mode.
   onMapClick?: (lat: number, lng: number) => void;
-  // Land-owner claim mode: enables the polygon draw control.
+  // Land-owner claim mode: click to add polygon vertices, double-click to finish.
   claimMode?: boolean;
   // Existing claimed properties (GeoJSON polygons) to render on the map.
   properties?: Array<{ id: string; name: string; geometry: GeoJSON.Polygon }>;
@@ -104,13 +102,19 @@ export default function MapComponent({
   const markersRef = useRef<L.LayerGroup | null>(null);
   const draftLayerRef = useRef<L.LayerGroup | null>(null);
   const propertyLayerRef = useRef<L.LayerGroup | null>(null);
-  const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
-  const drawControlRef = useRef<L.Control.Draw | null>(null);
-  // Keep latest callbacks without forcing the map to re-init.
+  // Layer that holds the in-progress claim vertices + rubber-band line.
+  const claimDrawRef = useRef<L.LayerGroup | null>(null);
+  // Keep latest props in refs so the map's click/dblclick handlers don't need re-binding.
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
   const onPolygonDrawnRef = useRef(onPolygonDrawn);
   onPolygonDrawnRef.current = onPolygonDrawn;
+  const claimModeRef = useRef(claimMode);
+  claimModeRef.current = claimMode;
+  // Draft claim vertices as [lat, lng] pairs.
+  const claimPtsRef = useRef<[number, number][]>([]);
+  // Timer that debounces single clicks so a double-click's trailing click is discarded.
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Init the map once
   useEffect(() => {
@@ -151,40 +155,78 @@ export default function MapComponent({
     markersRef.current = L.layerGroup().addTo(map);
     draftLayerRef.current = L.layerGroup().addTo(map);
     propertyLayerRef.current = L.layerGroup().addTo(map);
+    claimDrawRef.current = L.layerGroup().addTo(map);
 
-    // Layer that holds user-drawn shapes (claim mode).
-    const drawnItems = new L.FeatureGroup();
-    drawnItemsRef.current = drawnItems;
-    drawnItems.addTo(map);
+    // ---- Custom land-claim polygon drawing ----
+    // Single click adds a vertex (debounced). Double-click finishes the polygon
+    // WITHOUT counting the double-click location as a vertex.
+    const redrawClaim = () => {
+      const layer = claimDrawRef.current;
+      if (!layer) return;
+      layer.clearLayers();
+      const pts = claimPtsRef.current;
+      pts.forEach(([lat, lng]) => {
+        L.circleMarker([lat, lng], {
+          radius: 4,
+          color: '#16a34a',
+          weight: 2,
+          fillColor: '#16a34a',
+          fillOpacity: 1,
+        }).addTo(layer);
+      });
+      if (pts.length >= 2) {
+        L.polyline(pts, {
+          color: '#16a34a',
+          weight: 2,
+          dashArray: '6 4',
+        }).addTo(layer);
+      }
+    };
 
-    // Draw control — polygon only, for claiming property.
-    const drawControl = new L.Control.Draw({
-      draw: {
-        polygon: { allowIntersection: false, showArea: true },
-        polyline: false,
-        rectangle: false,
-        circle: false,
-        marker: false,
-        circlemarker: false,
-      },
-      edit: { featureGroup: drawnItems, edit: false, remove: true },
-    });
-    drawControlRef.current = drawControl;
-    // Hidden until claim mode is enabled.
-    drawControl.remove();
-    map.addControl(drawControl);
+    const addClaimPoint = (lat: number, lng: number) => {
+      claimPtsRef.current.push([lat, lng]);
+      redrawClaim();
+    };
 
-    map.on(L.Draw.Event.CREATED, (e: unknown) => {
-      const layer = (e as { layer: L.Layer }).layer as L.Polygon;
-      drawnItems.addLayer(layer);
-      const geojson = layer.toGeoJSON() as GeoJSON.Feature;
-      const polygon = geojson.geometry as GeoJSON.Polygon;
-      onPolygonDrawnRef.current?.(polygon);
-    });
+    const finishClaim = () => {
+      const pts = claimPtsRef.current;
+      if (pts.length >= 3) {
+        // GeoJSON Polygon ring is [lng, lat] pairs, closed (first == last).
+        const ring = pts.map(([lat, lng]) => [lng, lat]);
+        ring.push(ring[0]);
+        const polygon: GeoJSON.Polygon = {
+          type: 'Polygon',
+          coordinates: [ring],
+        };
+        onPolygonDrawnRef.current?.(polygon);
+      }
+      claimPtsRef.current = [];
+      claimDrawRef.current?.clearLayers();
+    };
 
-    // Let the user click anywhere on the map to choose where the new pin goes.
     map.on('click', (e: L.LeafletMouseEvent) => {
-      onMapClickRef.current?.(e.latlng.lat, e.latlng.lng);
+      if (claimModeRef.current) {
+        const { lat, lng } = e.latlng;
+        // Debounce: a double-click fires two clicks then dblclick; the trailing
+        // click's pending add is cancelled by the dblclick handler below.
+        if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = setTimeout(() => {
+          clickTimerRef.current = null;
+          addClaimPoint(lat, lng);
+        }, 220);
+      } else {
+        onMapClickRef.current?.(e.latlng.lat, e.latlng.lng);
+      }
+    });
+
+    map.on('dblclick', () => {
+      if (!claimModeRef.current) return;
+      // Discard the vertex that the double-click's second click would have added.
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      finishClaim();
     });
 
     return () => {
@@ -194,7 +236,7 @@ export default function MapComponent({
         markersRef.current = null;
         draftLayerRef.current = null;
         propertyLayerRef.current = null;
-        drawnItemsRef.current = null;
+        claimDrawRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,6 +279,8 @@ export default function MapComponent({
     const layer = draftLayerRef.current;
     if (!layer) return;
     layer.clearLayers();
+    // Don't show the incident draft marker while drawing a claim polygon.
+    if (claimModeRef.current) return;
     if (!draftLocation) return;
 
     const marker = L.marker([draftLocation.lat, draftLocation.lng], {
@@ -251,15 +295,18 @@ export default function MapComponent({
     });
   }, [draftLocation]);
 
-  // Show/hide the polygon draw control based on claim mode.
+  // Toggle claim-mode behaviour: disable double-click zoom so the finish
+  // double-click isn't swallowed by zoom, and clear any in-progress drawing
+  // when leaving claim mode.
   useEffect(() => {
     const map = mapInstanceRef.current;
-    const control = drawControlRef.current;
-    if (!map || !control) return;
+    if (!map) return;
     if (claimMode) {
-      control.addTo(map);
+      map.doubleClickZoom.disable();
     } else {
-      control.remove();
+      map.doubleClickZoom.enable();
+      claimPtsRef.current = [];
+      claimDrawRef.current?.clearLayers();
     }
   }, [claimMode]);
 
