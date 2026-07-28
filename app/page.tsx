@@ -2,10 +2,11 @@
 
 import '../styles/globals.css';
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import IncidentForm from '../components/IncidentForm';
-import AuthPortal from '../components/AuthPortal';
 import { getIncidents } from '../lib/utils';
 import { getMyProperties, createProperty, type Property } from '../lib/properties';
+import { createClient } from '../lib/supabase/client';
 import type { Incident } from '../lib/types';
 import dynamic from 'next/dynamic';
 
@@ -63,6 +64,14 @@ const Home = () => {
     }
   };
 
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await createClient().auth.signOut();
+    router.push('/login');
+    router.refresh();
+  };
+
   const refresh = useCallback(async () => {
     try {
       const data = await getIncidents();
@@ -80,7 +89,16 @@ const Home = () => {
 
   return (
     <div className="min-h-screen p-8">
-      <h1 className="text-4xl font-bold mb-8">TCIMS</h1>
+      <header className="flex items-center justify-between mb-8">
+        <h1 className="text-4xl font-bold">TCIMS</h1>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="bg-gray-200 text-gray-800 px-4 py-2 rounded hover:bg-gray-300"
+        >
+          Sign out
+        </button>
+      </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div>
@@ -152,9 +170,8 @@ const Home = () => {
         )}
       </div>
 
-      {/* Account / Auth */}
+      {/* Recent Incidents */}
       <div className="mt-12">
-        <h2 className="text-2xl font-semibold mb-4">Recent Incidents</h2>
         {loading ? (
           <p className="text-gray-600">Loading...</p>
         ) : incidents.length === 0 ? (
@@ -174,12 +191,6 @@ const Home = () => {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Account / Auth */}
-      <div className="mt-12">
-        <h2 className="text-2xl font-semibold mb-4">Account</h2>
-        <AuthPortal />
       </div>
     </div>
   );

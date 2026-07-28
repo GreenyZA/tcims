@@ -1,11 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '../lib/supabase/client';
 
 type Mode = 'login' | 'register';
 
-const AuthPortal = ({ onAuthed }: { onAuthed?: () => void }) => {
+const AuthPortal = () => {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,8 +56,9 @@ const AuthPortal = ({ onAuthed }: { onAuthed?: () => void }) => {
           password,
         });
         if (signInError) throw signInError;
-        setMessage('Signed in.');
-        onAuthed?.();
+        // Signed in — go to the app.
+        router.push('/');
+        router.refresh();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
