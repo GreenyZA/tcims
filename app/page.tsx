@@ -3,6 +3,7 @@
 import '../styles/globals.css';
 import { useEffect, useState, useCallback } from 'react';
 import IncidentForm from '../components/IncidentForm';
+import AuthPortal from '../components/AuthPortal';
 import { getIncidents } from '../lib/utils';
 import type { Incident } from '../lib/types';
 import dynamic from 'next/dynamic';
@@ -85,6 +86,12 @@ const Home = () => {
             ))}
           </div>
         )}
+      </div>
+
+      {/* Account / Auth */}
+      <div className="mt-12">
+        <h2 className="text-2xl font-semibold mb-4">Account</h2>
+        <AuthPortal />
       </div>
     </div>
   );
