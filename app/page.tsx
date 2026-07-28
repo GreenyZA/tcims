@@ -4,6 +4,7 @@ import '../styles/globals.css';
 import { useEffect, useState } from 'react';
 import IncidentForm from '../components/IncidentForm';
 import dynamic from 'next/dynamic';
+import type { Incident } from '../lib/types';
 
 // Dynamic import - This prevents Leaflet from running on the server
 const MapComponent = dynamic(() => import('../components/MapComponent'), {
@@ -11,13 +12,7 @@ const MapComponent = dynamic(() => import('../components/MapComponent'), {
   loading: () => <div className="h-[500px] bg-gray-100 flex items-center justify-center rounded-lg">Loading map...</div>,
 });
 
-type IncidentsTableRow = {
-  id: number | string;
-  title?: string;
-  description?: string;
-  location?: string;
-  created_at?: string;
-};
+type IncidentsTableRow = Incident;
 
 const Home = () => {
   const [incidents, setIncidents] = useState<IncidentsTableRow[]>([]);
@@ -57,9 +52,13 @@ const Home = () => {
         <div className="space-y-4">
           {incidents.map((incident) => (
             <div key={incident.id} className="p-4 border rounded-lg bg-white shadow">
-              <strong>{incident.title || 'No Title'}</strong>
+              <strong>{incident.title || incident.type || 'No Title'}</strong>
               {incident.description && <p className="mt-1">{incident.description}</p>}
-              {incident.location && <p className="text-sm text-gray-600">📍 {incident.location}</p>}
+              {incident.location && (
+                <p className="text-sm text-gray-600">
+                  📍 {incident.location.lat.toFixed(4)}, {incident.location.lng.toFixed(4)}
+                </p>
+              )}
             </div>
           ))}
         </div>
