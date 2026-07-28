@@ -99,14 +99,20 @@ from day one; MFA / email verification / rate-limiting are the later hardening.
 - [x] Auth foundation: Supabase SSR clients + session middleware + register/login portal
       (username + email + password; passwords hashed by Supabase Auth, never plaintext).
 - [x] Migration 0002: profiles (username) + properties (PostGIS polygon) + RLS + property_for_point() helper.
-      (SQL written in supabase/migrations/0002_...sql; APPLY + reload schema cache still pending on live DB.)
-- [x] Polygon draw + claim flow on map: leaflet-draw integration, "Claim a plot" UI, save to properties
-      (lib/properties.ts createProperty/getMyProperties), render claimed plots as filled polygons.
-- [ ] Spatial containment (ST_Contains) → priority notifications for property owners (DB helper exists;
-      wire incident-save / notification path next).
+      (Applied to live DB + schema cache reloaded; verified readable via REST.)
+- [x] Polygon draw + claim flow on map: custom click-to-place drawer (single-click vertices,
+      double-click finishes excluding that point), "Claim a plot" UI with Accept/Clear, save to
+      properties (lib/properties.ts createProperty/getMyProperties), render claimed plots as filled
+      translucent green polygons. Pin placement works anywhere incl. inside a claimed plot.
+- [x] Spatial containment (ST_Contains) → priority flag: migration 0003 adds is_priority + property_id
+      to incidents, trigger set_incident_priority() uses property_for_point() to auto-flag incidents
+      inside a claimed polygon on insert/update; priority incidents show a red ring on the map + red
+      PRIORITY badge/border in the Recent Incidents list, sorted to top. VERIFIED working end-to-end.
+- [x] App gated to registered users: standalone /login route + middleware route protection (unauth → /login).
+- [x] Open self-registration (owner decision 2026-07-28): keep open for now, lock down later.
 - [ ] Day 15: Image upload to Supabase Storage with preview
 
-Outstanding (blocked on live-DB apply + cache reload by owner):
-- Run Query B (properties block) in Supabase SQL Editor, then reload PostgREST schema cache
-  (Dashboard → API → Reload schema, or `select pg_notify('pgrst','reload schema');`).
-- Verify `GET /rest/v1/properties` and `/rest/v1/profiles` return `[]` (not PGRST205).
+Outstanding:
+- Day 15 image upload to Supabase Storage (next feature when owner wants it).
+- Lock down registration (deferred — open for now).
+- (Previously blocked live-DB steps for 0002/0003 are DONE: migrations applied + schema cache reloaded.)
