@@ -1,1 +1,5 @@
-node_modules echo .next echo dist echo *.log echo env.local
+node_modules
+.next
+dist
+*.log
+.env*.local
