@@ -26,24 +26,63 @@ type Incident = {
   is_priority?: boolean;
   // The containing property id, if priority.
   property_id?: string | null;
+  // Point-of-interest flag.
+  is_poi?: boolean;
+  // Reported-for-removal flag.
+  is_reported?: boolean;
+  // Attached photo URLs.
+  photos?: string[];
+  // Most recent message/comment body for this pin.
+  lastMessage?: string | null;
 };
 
-// Build a colored pin icon for a given category color.
-function makeIcon(color: string): L.DivIcon {
+// Escape a string for safe inclusion in HTML (popups / tooltips).
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Build a composite pin icon. A colored base dot plus a small clamped badge
+// row above it: photo (camera), message (speech), POI (flag). Reported pins
+// get a black skull.
+function makePinIcon(opts: {
+  color: string;
+  hasPhoto?: boolean;
+  hasMessage?: boolean;
+  isPoi?: boolean;
+  isReported?: boolean;
+  priority?: boolean;
+}): L.DivIcon {
+  const { color, hasPhoto, hasMessage, isPoi, isReported, priority } = opts;
+  const badges: string[] = [];
+  if (hasPhoto) badges.push('📷');
+  if (hasMessage) badges.push('💬');
+  if (isPoi) badges.push('🚩');
+  const badgeRow = badges.length
+    ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);display:flex;gap:1px;font-size:9px;line-height:1;background:#fff;border:1px solid rgba(0,0,0,0.25);border-radius:6px;padding:1px 2px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.3)">${badges.join('')}</div>`
+    : '';
+  const skull = isReported
+    ? `<div style="position:absolute;top:-14px;right:-12px;font-size:13px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,0.6))">💀</div>`
+    : '';
+  const ring = priority
+    ? 'border:3px solid #dc2626;box-shadow:0 0 0 3px rgba(220,38,38,0.35);'
+    : 'border:2px solid #ffffff;box-shadow:0 0 0 1px rgba(0,0,0,0.4);';
   return L.divIcon({
     className: '',
     html: `
-      <span style="
-        display:block;
-        width:18px;height:18px;
-        background:${color};
-        border:2px solid #ffffff;
-        border-radius:50%;
-        box-shadow:0 0 0 1px rgba(0,0,0,0.4);
-      "></span>`,
+      <div style="position:relative;width:18px;height:18px;">
+        ${badgeRow}
+        ${skull}
+        <span style="display:block;width:18px;height:18px;background:${color};border-radius:50%;${ring}"></span>
+      </div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
     popupAnchor: [0, -10],
+    tooltipAnchor: [0, -10],
   });
 }
 
@@ -64,17 +103,6 @@ function makeDraftIcon(): L.DivIcon {
     iconAnchor: [11, 11],
     popupAnchor: [0, -12],
   });
-}
-
-// Cache one icon per color so we don't re-create them on every render.
-const iconCache = new Map<string, L.DivIcon>();
-function iconFor(color: string): L.DivIcon {
-  let icon = iconCache.get(color);
-  if (!icon) {
-    icon = makeIcon(color);
-    iconCache.set(color, icon);
-  }
-  return icon;
 }
 
 interface MapComponentProps {
@@ -174,6 +202,12 @@ export default function MapComponent({
     draftLayerRef.current = L.layerGroup().addTo(map);
     propertyLayerRef.current = L.layerGroup().addTo(map);
     claimDrawRef.current = L.layerGroup().addTo(map);
+
+    // Suppress the browser's native context menu everywhere on the map so our
+    // custom pin menu is the only thing that appears on right-click.
+    map.on('contextmenu', (e: L.LeafletMouseEvent) => {
+      e.originalEvent.preventDefault();
+    });
 
     // ---- Custom land-claim polygon drawing ----
     // Single click adds a vertex (debounced). Double-click finishes the polygon
@@ -288,6 +322,9 @@ export default function MapComponent({
         incident.location.lng,
       ];
       const priority = incident.is_priority;
+      const hasPhoto = Array.isArray(incident.photos) && incident.photos.length > 0;
+      const hasMessage = Boolean(incident.lastMessage && incident.lastMessage.trim());
+
       const popup = `
         <div style="min-width:160px">
           ${
@@ -295,24 +332,58 @@ export default function MapComponent({
               ? '<div style="display:inline-block;background:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;margin-bottom:4px">PRIORITY</div>'
               : ''
           }
+          ${
+            incident.is_reported
+              ? '<div style="display:inline-block;background:#111827;color:#fff;font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;margin-bottom:4px">REPORTED 💀</div>'
+              : ''
+          }
           <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cat.color};margin-right:6px"></span>
-          <strong>${cat.label}</strong>
-          ${incident.title ? `<div style="margin-top:2px">${incident.title}</div>` : ''}
-          ${incident.description ? `<p style="margin:4px 0 0">${incident.description}</p>` : ''}
+          <strong>${escapeHtml(cat.label)}</strong>
+          ${incident.title ? `<div style="margin-top:2px">${escapeHtml(incident.title)}</div>` : ''}
+          ${incident.description ? `<p style="margin:4px 0 0">${escapeHtml(incident.description)}</p>` : ''}
         </div>`;
-      // Priority incidents get a red ring so they stand out on the map.
-      const icon = priority
-        ? L.divIcon({
-            className: '',
-            html: `<div style="width:18px;height:18px;border-radius:50%;background:${cat.color};border:3px solid #dc2626;box-shadow:0 0 0 3px rgba(220,38,38,0.35)"></div>`,
-            iconSize: [18, 18],
-            iconAnchor: [9, 9],
-          })
-        : iconFor(cat.color);
+
+      // Hover tooltip: photo thumbnail +/or latest message. Also shows on tap
+      // (Leaflet tooltips appear on click/tap too), which helps on mobile.
+      const tipParts: string[] = [];
+      if (hasPhoto) {
+        tipParts.push(
+          `<img src="${escapeHtml(incident.photos![0])}" alt="photo" style="width:120px;height:90px;object-fit:cover;border-radius:6px;border:1px solid #ccc;display:block" />`,
+        );
+        if (incident.photos!.length > 1) {
+          tipParts.push(
+            `<div style="font-size:11px;color:#555;margin-top:2px">+${incident.photos!.length - 1} more</div>`,
+          );
+        }
+      }
+      if (hasMessage) {
+        tipParts.push(
+          `<div style="max-width:160px;font-size:12px;color:#333;margin-top:4px">💬 ${escapeHtml(incident.lastMessage!.slice(0, 120))}${incident.lastMessage!.length > 120 ? '…' : ''}</div>`,
+        );
+      }
+      const tooltipHtml = tipParts.join('');
+
+      const icon = makePinIcon({
+        color: cat.color,
+        hasPhoto,
+        hasMessage,
+        isPoi: incident.is_poi,
+        isReported: incident.is_reported,
+        priority,
+      });
       const marker = L.marker(pos, { icon }).addTo(group);
       marker.bindPopup(popup);
+      if (tooltipHtml) {
+        marker.bindTooltip(tooltipHtml, {
+          direction: 'top',
+          opacity: 1,
+          className: 'tcims-pin-tip',
+          sticky: false,
+        });
+      }
       // Right-click opens the pin action menu (prevents the browser menu).
       marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e);
         const evt = e.originalEvent as MouseEvent;
         evt.preventDefault();
         onIncidentContextMenuRef.current?.(

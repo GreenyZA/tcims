@@ -4,7 +4,8 @@ import '../styles/globals.css';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import IncidentForm from '../components/IncidentForm';
-import { getIncidents, uploadIncidentPhoto, addIncidentPhoto, setIncidentPoi, addIncidentComment, getIncidentComments, reportIncidentRemoval } from '../lib/utils';
+import { getIncidents, uploadIncidentPhoto, addIncidentPhoto, setIncidentPoi, addIncidentComment, getIncidentComments, reportIncidentRemoval, getAllIncidentComments } from '../lib/utils';
+import { isEmergencyCategory } from '../lib/categories';
 import { getMyProperties, createProperty, type Property } from '../lib/properties';
 import { createClient } from '../lib/supabase/client';
 import type { Incident, IncidentComment } from '../lib/types';
@@ -36,6 +37,7 @@ const Home = () => {
   const [draftPolygon, setDraftPolygon] = useState<GeoJSON.Polygon | null>(null);
   // ---- Right-click pin context menu + action modals ----
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [uploadFor, setUploadFor] = useState<string | null>(null);
   const [messageFor, setMessageFor] = useState<string | null>(null);
   const [reportFor, setReportFor] = useState<string | null>(null);
@@ -95,16 +97,18 @@ const Home = () => {
 
   const router = useRouter();
 
-  // Close the right-click menu when clicking elsewhere.
+  // Close the right-click menu when clicking/tapping outside it.
+  // (Right-clicking the menu itself is NOT treated as a close; the opening
+  // right-click can never close it because we only listen for mousedown.)
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
-    window.addEventListener('click', close);
-    window.addEventListener('contextmenu', close);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('contextmenu', close);
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenu(null);
+      }
     };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [menu]);
 
   const openMenu = useCallback((id: string, x: number, y: number) => {
@@ -172,6 +176,7 @@ const Home = () => {
       await addIncidentComment(messageFor, body.trim());
       const cs = await getIncidentComments(messageFor);
       setCommentsByIncident((prev) => ({ ...prev, [messageFor]: cs }));
+      await refresh();
     } catch (err) {
       const e = err as { message?: string };
       setActionError(e?.message || 'Failed to post message.');
@@ -188,6 +193,7 @@ const Home = () => {
       await reportIncidentRemoval(reportFor, reportReason.trim());
       setReportFor(null);
       setReportReason('');
+      await refresh();
     } catch (err) {
       const e = err as { message?: string };
       setActionError(e?.message || 'Failed to submit report.');
@@ -205,9 +211,29 @@ const Home = () => {
   const refresh = useCallback(async () => {
     try {
       const data = await getIncidents();
-      // Priority incidents (inside a claimed property) bubble to the top.
-      data.sort((a, b) => Number(b.is_priority) - Number(a.is_priority));
-      setIncidents(data);
+      // Attach the most recent message to each pin so the map can show a
+      // "has message" flag + hover preview. Comments are publicly readable.
+      let messages: Record<string, string> = {};
+      try {
+        messages = await getAllIncidentComments();
+      } catch {
+        /* ignore — flags just won't show */
+      }
+      // Priority incidents (inside a claimed property OR an always-TOP-priority
+      // emergency category such as Fire / Health / Police) bubble to the top.
+      data.sort(
+        (a, b) =>
+          Number(b.is_priority || isEmergencyCategory(b.type)) -
+          Number(a.is_priority || isEmergencyCategory(a.type)),
+      );
+      setIncidents(
+        data.map((inc) => ({
+          ...inc,
+          // Effective priority: DB flag OR an emergency category.
+          is_priority: Boolean(inc.is_priority || isEmergencyCategory(inc.type)),
+          lastMessage: messages[String(inc.id)] ?? null,
+        })),
+      );
     } catch (error) {
       console.error('Failed to fetch incidents:', error);
     } finally {
@@ -368,6 +394,17 @@ const Home = () => {
                       POI
                     </span>
                   )}
+                  {incident.is_reported && (
+                    <span className="bg-gray-900 text-white text-xs font-bold px-2 py-0.5 rounded">
+                      💀 REPORTED
+                    </span>
+                  )}
+                  {incident.photos && incident.photos.length > 0 && (
+                    <span title="Has photo" className="text-sm">📷</span>
+                  )}
+                  {incident.lastMessage && (
+                    <span title="Has message" className="text-sm">💬</span>
+                  )}
                 </div>
                 {incident.description && <p className="mt-1">{incident.description}</p>}
                 {incident.location && (
@@ -406,9 +443,9 @@ const Home = () => {
       {/* Right-click pin context menu */}
       {menu && (
         <div
-          className="fixed z-50 bg-white border border-gray-300 rounded shadow-lg text-sm text-gray-900 min-w-[180px]"
+          ref={menuRef}
+          className="fixed z-[10000] bg-white border border-gray-300 rounded shadow-lg text-sm text-gray-900 min-w-[180px]"
           style={{ top: menu.y, left: menu.x }}
-          onClick={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -449,7 +486,7 @@ const Home = () => {
 
       {/* Leave a message modal */}
       {messageFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setMessageFor(null)}>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40" onClick={() => setMessageFor(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md text-gray-900" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-3">Message on pin</h3>
             {(commentsByIncident[messageFor] ?? []).length > 0 && (
@@ -491,7 +528,7 @@ const Home = () => {
 
       {/* Report for removal modal */}
       {reportFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setReportFor(null)}>
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40" onClick={() => setReportFor(null)}>
           <div className="bg-white rounded-lg p-6 w-full max-w-md text-gray-900" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold mb-3">Report pin for removal</h3>
             <textarea

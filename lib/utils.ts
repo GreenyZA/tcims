@@ -114,16 +114,41 @@ export async function addIncidentPhoto(
   }
 }
 
-// Toggle the point-of-interest flag on an incident.
+// Toggle the point-of-interest flag on an incident. Uses a SECURITY DEFINER
+// RPC so it works for anonymous pins too (their user_id is NULL, so the
+// normal UPDATE RLS policy would reject the change).
 export async function setIncidentPoi(
   incidentId: string,
   is_poi: boolean,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('incidents')
-    .update({ is_poi })
-    .eq('id', incidentId);
+  const { error } = await supabase.rpc('set_incident_poi', {
+    p_id: incidentId,
+    p_is_poi: is_poi,
+  });
   if (error) throw error;
+}
+
+// Fetch ALL comments across all incidents (publicly readable). Used to mark
+// which pins "have a message" on the map. Returns a map of incidentId -> latest body.
+export async function getAllIncidentComments(): Promise<Record<string, string>> {
+  const { data, error } = await supabase
+    .from('incident_comments')
+    .select('incident_id, body, created_at');
+  if (error) throw error;
+  const latest: Record<string, { body: string; created_at?: string }> = {};
+  for (const row of data as Array<{
+    incident_id: string;
+    body: string;
+    created_at?: string;
+  }>) {
+    const prev = latest[row.incident_id];
+    if (!prev || (row.created_at ?? '') > (prev.created_at ?? '')) {
+      latest[row.incident_id] = { body: row.body, created_at: row.created_at };
+    }
+  }
+  const out: Record<string, string> = {};
+  for (const [id, v] of Object.entries(latest)) out[id] = v.body;
+  return out;
 }
 
 // Add a comment to an incident.
