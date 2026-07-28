@@ -12,6 +12,7 @@ export type Incident = {
   location: { lat: number; lng: number };
   photos?: string[];
   user_id?: string;
+  anonymous?: boolean;
   status?: IncidentStatus;
   created_at?: string;
 };
