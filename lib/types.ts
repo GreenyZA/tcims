@@ -21,7 +21,11 @@ export type Incident = {
   property_id?: string | null;
   // Point-of-interest flag (right-click -> Mark as POI).
   is_poi?: boolean;
-  // Attached photo URLs (public Storage paths).
+  // Reported-for-removal flag (set by the incident_reports trigger).
+  is_reported?: boolean;
+  // Most recent message/comment body for this pin (enriched client-side,
+  // not stored on the row — used to show a "has message" flag on the map).
+  lastMessage?: string | null;
   created_at?: string;
 };
 
