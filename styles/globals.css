@@ -29,7 +29,20 @@ body {
   padding: 6px;
   color: #111;
   z-index: 1000;
+  /* Override Leaflet's white-space: nowrap so the tooltip can size to its
+     content (a 120px-wide image) instead of collapsing to near-zero width. */
+  white-space: normal;
 }
 .tcims-pin-tip.leaflet-tooltip-top::before {
   display: none;
+}
+/* Leaflet's CSS sets width: auto on images inside .leaflet-container, and the
+   browser UA stylesheet sets max-width: 100% on all img elements. Inside the
+   tooltip this creates a circular dependency: the tooltip (width: auto) can't
+   size itself until the image reports its intrinsic width, but the image's
+   max-width: 100% depends on the tooltip's width — so the tooltip collapses
+   to ~16px and the image shrinks to 2px. Fix: remove the UA max-width so the
+   image's inline width (120px) is respected. */
+.tcims-pin-tip.leaflet-tooltip img {
+  max-width: none;
 }
