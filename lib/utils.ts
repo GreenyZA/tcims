@@ -1,6 +1,6 @@
 // lib/utils.ts
 import { supabase } from './supabase';
-import type { Incident, IncidentComment } from './types';
+import type { Incident, IncidentComment, IncidentReport } from './types';
 
 // PostgREST stores a PostGIS geometry(Point,4326) as GeoJSON:
 //   { type: "Point", coordinates: [lng, lat] }   (NOTE: longitude FIRST)
@@ -188,4 +188,83 @@ export async function reportIncidentRemoval(
     .from('incident_reports')
     .insert([{ incident_id: incidentId, reason }]);
   if (error) throw error;
+}
+
+// ---- Registration gate helpers ----
+
+// Fetch the current signup_mode ('open' or 'admin_only').
+// Returns 'open' as a safe default if the config row is missing or the
+// client can't reach the DB.
+export async function getSignupMode(): Promise<'open' | 'admin_only'> {
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('value')
+    .eq('key', 'signup_mode')
+    .single();
+
+  if (error || !data) return 'open';
+  return (data.value as 'open' | 'admin_only') ?? 'open';
+}
+
+// Set the signup mode (admin only).
+export async function setSignupMode(
+  mode: 'open' | 'admin_only',
+): Promise<void> {
+  const { error } = await supabase
+    .from('app_config')
+    .update({ value: mode })
+    .eq('key', 'signup_mode');
+  if (error) throw error;
+}
+
+// ---- Admin moderation helpers ----
+
+// Fetch all incident reports (admin only). Joins incident + reporter profile.
+export async function getIncidentReports(): Promise<IncidentReport[]> {
+  const { data, error } = await supabase
+    .from('incident_reports')
+    .select(`
+      id,
+      incident_id,
+      reason,
+      status,
+      created_at,
+      reporter:profiles!reporter_id ( username, display_name )
+    `);
+  if (error) throw error;
+  return (data as unknown[]) as IncidentReport[];
+}
+
+// Update a report's status (admin only).
+export async function updateReportStatus(
+  reportId: string,
+  status: 'open' | 'reviewed' | 'actioned' | 'dismissed',
+): Promise<void> {
+  const { error } = await supabase
+    .from('incident_reports')
+    .update({ status })
+    .eq('id', reportId);
+  if (error) throw error;
+}
+
+// Delete an incident (admin only — the admin RLS policy allows this).
+export async function deleteIncident(incidentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('incidents')
+    .delete()
+    .eq('id', incidentId);
+  if (error) throw error;
+}
+
+// Check whether the current user is an admin.
+export async function isAdmin(): Promise<boolean> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('is_admin')
+    .eq('id', user.id)
+    .single();
+  if (error) return false;
+  return Boolean(data?.is_admin);
 }

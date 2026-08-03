@@ -44,4 +44,8 @@ export type IncidentReport = {
   reason: string;
   status?: 'open' | 'reviewed' | 'actioned' | 'dismissed';
   created_at?: string;
+  reporter?: {
+    username?: string | null;
+    display_name?: string | null;
+  } | null;
 };

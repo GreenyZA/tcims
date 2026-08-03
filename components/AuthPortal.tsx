@@ -1,20 +1,36 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '../lib/supabase/client';
+import { getSignupMode } from '../lib/utils';
 
 type Mode = 'login' | 'register';
 
 const AuthPortal = () => {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>('login');
+  const [signupOpen, setSignupOpen] = useState<boolean | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Fetch the signup mode on mount.
+  useEffect(() => {
+    getSignupMode()
+      .then((m) => setSignupOpen(m === 'open'))
+      .catch(() => setSignupOpen(false));
+  }, []);
+
+  // If signup is closed and the user somehow toggled to register, go back to login.
+  useEffect(() => {
+    if (signupOpen === false && mode === 'register') {
+      setMode('login');
+    }
+  }, [signupOpen, mode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +89,13 @@ const AuthPortal = () => {
         {mode === 'login' ? 'Sign in' : 'Register'}
       </h2>
 
+      {signupOpen === false && mode === 'register' && (
+        <p className="text-sm text-red-600 mb-4">
+          Self-registration is currently closed. Contact an administrator to
+          request an account.
+        </p>
+      )}
+
       <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
         {mode === 'register' && (
           <div>
@@ -125,7 +148,7 @@ const AuthPortal = () => {
 
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || signupOpen === false}
           className="bg-blue-500 text-white px-4 py-2 rounded disabled:opacity-50"
         >
           {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Register'}
@@ -134,19 +157,23 @@ const AuthPortal = () => {
 
       <p className="mt-4 text-sm text-gray-600">
         {mode === 'login' ? (
-          <>
-            No account?{' '}
-            <button
-              className="text-blue-600 underline"
-              onClick={() => {
-                setMode('register');
-                setError(null);
-                setMessage(null);
-              }}
-            >
-              Register
-            </button>
-          </>
+          signupOpen === false ? (
+            <span>Registration is closed.</span>
+          ) : (
+            <>
+              No account?{' '}
+              <button
+                className="text-blue-600 underline"
+                onClick={() => {
+                  setMode('register');
+                  setError(null);
+                  setMessage(null);
+                }}
+              >
+                Register
+              </button>
+            </>
+          )
         ) : (
           <>
             Already registered?{' '}
