@@ -118,6 +118,6 @@ from day one; MFA / email verification / rate-limiting are the later hardening.
       DB objects verified present (1/1/1). VERIFIED working end-to-end.
 
 Outstanding:
-- Lock down registration (deferred — open for now).
-- Admin moderation UI for incident_reports (reviews/action removal) — not built yet.
+- Lock down registration — DONE: `app_config` table (0010 migration) + signup_mode toggle in admin dashboard + AuthPortal gating.
+- Admin moderation UI for incident_reports — DONE: admin role on profiles (0009) + moderation page at `/admin/reports` + middleware protection + IncidentReport/ReportActions/SignupModeToggle components.
 - (Live-DB steps for 0002/0003/0004 are DONE: migrations applied + schema cache reloaded.)
